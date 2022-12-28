@@ -1,0 +1,170 @@
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r results="hide"}
+library(tidyverse)
+library(caret)
+library(readxl)
+library(stargazer)
+library(e1071)
+library(partykit)
+
+set.seed(6527)
+```
+
+# Data
+
+First, we read all non-standard uses which did not require preprocessing.
+
+```{r}
+he_ns <- read_excel("he_ns.xlsx")
+she_ns <- read_excel("she_ns_1.xlsx")
+she_ns <- rbind(she_ns, read_excel("she_ns_2.xlsx"))
+they_ns <- read_excel("they_ns.xlsx")
+```
+
+Here, we label them as `ns` (non-standard).
+
+```{r}
+he_ns %>% 
+  mutate(pron="he", type="ns") -> he_ns
+
+she_ns %>% 
+  mutate(pron="she", type="ns") -> she_ns
+
+
+they_ns %>% 
+  mutate(pron="they", type="ns") -> they_ns
+```
+
+Second, the preprocessed data on standard uses was loaded.
+
+```{r}
+he_s <- read_excel("standard_forms.xlsx", sheet = "he")
+she_s <- read_excel("standard_forms.xlsx", sheet = "she")
+they_s <- read_excel("standard_forms.xlsx", sheet = "they")
+```
+
+And labeled.
+
+```{r}
+he_s %>% 
+  mutate(pron="he", type="s") -> he_s
+
+she_s %>% 
+  mutate(pron="she", type="s") -> she_s
+
+they_s %>% 
+  mutate(pron="they", type="s") -> they_s
+```
+
+Now, we combined them all together into one dataset.
+
+```{r}
+df <- rbind(he_ns, she_ns, they_ns, he_s, she_s, they_s)
+```
+
+The prepocessed file with metadata on speaker was loaded here. We also merge
+our dataset with it and select only needed columns. 
+
+```{r}
+meta <- read_excel("metadata_unified.xlsx")
+merge(df, meta, by.x = "person_id", by.y = "id") %>% 
+  select(person_id, pron, type, gender, birthyear, birthplace,
+         relative_to_mikh, education_school, education_add, job_norm,
+         livingplace) -> final_data
+```
+
+Here, the data are preprocessed.
+
+```{r}
+final_data %>% 
+  mutate(education_school = replace_na(as.numeric(education_school), 0),
+         education_add = factor(education_add,
+                                levels = c("-", "courses", "college", "university"))
+         ) -> final_data
+
+final_data[is.na(final_data)] <- "-"
+
+final_data$pron <- as.factor(final_data$pron)
+final_data$gender <- as.factor(final_data$gender)
+final_data$relative_to_mikh <- as.factor(final_data$relative_to_mikh)
+final_data$job_norm <- as.factor(final_data$job_norm)
+final_data$livingplace <- as.factor(final_data$livingplace)
+```
+
+The summary is as follows.
+
+```{r}
+summary(final_data)
+```
+
+# Analysis
+
+Now, we train Logistic Regression to understand what features are important in predicting type of a possessive pronoun. We used as predictors `gender`, `birthyear`,
+`education` (both school and other than school), `birthplace relatively to Mikhalevskaja`. We did not include other features to minimize the number of parameters.
+
+```{r}
+final_data %>% 
+  mutate(type = ifelse(type == "ns", 0, 1)) -> final_data
+
+model <- glm(type ~ pron+gender+birthyear+education_school+education_add+relative_to_mikh,
+            data=final_data)
+stargazer(model,
+          type="text",
+          p.auto = TRUE,
+          single.row=TRUE,
+          ci=TRUE, ci.level=0.95,
+          report='vscp*')
+```
+
+We check whether the model is adequate and is not disbalanced.
+
+```{r}
+pred <- predict(model)
+pred <- ifelse(pred < 0.3, 0, 1)
+confusionMatrix(data=as.factor(pred),
+                reference = as.factor(final_data$type))
+```
+
+Now, we run a series of chi-square tests to check whether `type` is independent from other factors, namely `gender`, `birthyear`, `education_school`, `education_add`, and `relative_to_mikh`.
+
+```{r}
+final_data %>% 
+  select(gender, type) %>% 
+  table %>% 
+  chisq.test(simulate.p.value=TRUE)
+
+final_data %>% 
+  select(birthyear, type) %>% 
+  table %>% 
+  chisq.test(simulate.p.value=TRUE)
+
+final_data %>% 
+  select(education_school, type) %>% 
+  table %>% 
+  chisq.test(simulate.p.value=TRUE)
+
+final_data %>% 
+  select(education_add, type) %>% 
+  table %>% 
+  chisq.test(simulate.p.value=TRUE)
+
+final_data %>% 
+  select(relative_to_mikh, type) %>% 
+  table %>% 
+  chisq.test(simulate.p.value=TRUE)
+```
+
+And the final model is a decision tree.
+
+```{r}
+final_data$birthplace <- NULL
+final_data$person_id <- NULL
+
+tree_type <- ctree(type ~ ., data=final_data)
+plot(tree_type)
+```
+
