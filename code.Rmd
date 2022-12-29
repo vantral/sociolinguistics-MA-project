@@ -66,7 +66,7 @@ Now, we combined them all together into one dataset.
 df <- rbind(he_ns, she_ns, they_ns, he_s, she_s, they_s)
 ```
 
-The prepocessed file with metadata on speaker was loaded here. We also merge
+The preprocessed file with metadata on speaker was loaded here. We also merge
 our dataset with it and select only needed columns. 
 
 ```{r}
@@ -99,6 +99,50 @@ The summary is as follows.
 
 ```{r}
 summary(final_data)
+```
+Some visualization.
+
+```{r}
+ggplot(final_data, aes(type, fill=pron))+
+  geom_bar(width = 0.5)+
+  theme_light()+
+  theme(legend.position="right")+
+  ylab("Number of contexts")+
+  xlab("Non-standard vs standard forms")
+```
+
+```{r}
+ggplot(final_data, aes(pron, fill=pron))+
+  geom_bar()+
+  theme_light()+
+  theme(legend.position="none")+
+  ylab("Number of contexts")+
+  xlab("")
+```
+```{r}
+ggplot(final_data, aes(gender, fill=gender))+
+  geom_bar()+
+  theme_light()+
+  ylab("Number of contexts")+
+  theme(legend.position="none")+
+  xlab("Gender")
+```
+
+```{r}
+ggplot(final_data, aes(y=birthyear, x=0))+
+  geom_boxplot()+
+  xlim(c(-2, 2))+
+  theme_light()+
+  ylab("Number of contexts")+
+  xlab("Birthyear")
+```
+```{r}
+ggplot(final_data, aes(relative_to_mikh, fill=relative_to_mikh))+
+  geom_bar()+
+  theme_light()+
+  theme(legend.position="none")+
+  ylab("Number of contexts")+
+  xlab("Location relatively to Mikhalevskaja")
 ```
 
 # Analysis
@@ -163,6 +207,8 @@ And the final model is a decision tree.
 ```{r}
 final_data$birthplace <- NULL
 final_data$person_id <- NULL
+
+final_data$type <- as.factor(final_data$type)
 
 tree_type <- ctree(type ~ ., data=final_data)
 plot(tree_type)
